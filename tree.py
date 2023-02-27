@@ -17,10 +17,12 @@ class Person:
         self.notes: str = ""
         self.props = {}
 
-    def from_book_line(line: str):
+    def from_book_line(line: str, gen: int = 0):
         parsed = re.search("^(\.*)([0-9]*) (.*)", line)
-        gen = int(parsed.group(2))
-        line = parsed.group(3)
+
+        if parsed is not None:
+            gen = int(parsed.group(2))                
+            line = parsed.group(3)
 
         props = {}
         while line is not None and line != "":
@@ -50,9 +52,8 @@ class Person:
 
         return (line[0:first_space_idx], line[first_space_idx + 1:last_space_idx], line[last_space_idx + 1:])
 
-
-    def add_spouse(self, first_name: str, last_name: str):
-        self.spouse = Person(self.gen, first_name, last_name)
+    def add_spouse(self, spouse):
+        self.spouse = spouse
 
     def add_child(self, child):
         child.parent = self
@@ -66,12 +67,29 @@ class Person:
             name += " " + self.last_name
         return name
 
-    def to_dot_str(self, attrs: str = None) -> str:
+    def dot_str(self, attrs: str = None) -> str:
         dot = str(self.id) + " [label=\"" + str(self.gen) + ". " + self.name_str().replace("\"", "\\\"") + "\" "
         if attrs is not None:
             dot += attrs
         dot += "]\n"
         return dot
+
+    def gedcom_str(self):
+        gedcom = "\n0 @" + str(self.id) +"@ INDI"
+        gedcom += "\n1 NAME " + self.first_name
+        if self.middle_name is not None:
+            gedcom += " " + self.middle_name
+        if self.last_name is not None:
+            gedcom += " /" + self.last_name + "/"
+
+        if self.spouse is not None:
+            gedcom += self.spouse.gedcom_str()
+            gedcom += "\n0 @F" + str(self.id) +"@ FAM"
+            gedcom += "\n1 HUSB @" + str(self.id) +"@"
+            gedcom += "\n1 WIFE @" + str(self.spouse.id) +"@"
+        for child in self.children:
+            gedcom += "\n1 CHIL @" + str(child.id) +"@"
+        return gedcom
 
 def parse_book_file() -> Person:
     last_seen: list[Person] = []
@@ -87,6 +105,14 @@ def parse_book_file() -> Person:
 
             # Spouse
             if line.startswith("+"):
+                line = line[1:].strip()
+                parsed = re.search("^([0-9]+) (.*)", line)
+                if parsed is None:
+                    gen = last.gen
+                    last.add_spouse(Person.from_book_line(line))
+                else:
+                    gen = int(parsed.group(1))
+                    last_seen[gen].add_spouse(Person.from_book_line(parsed.group(2)))
                 continue
 
             me = Person.from_book_line(line)
@@ -99,7 +125,7 @@ def parse_book_file() -> Person:
     return root
 
 def dot_from_top(person: Person) -> str:
-    dot = person.to_dot_str()
+    dot = person.dot_str()
     for child in person.children:
         dot += dot_from_top(child)
     if person.parent is not None:
@@ -111,13 +137,24 @@ def dot_from_bottom(person: Person) -> str:
     curr: Person = person
     dot = ""
     while curr is not None:
-        dot += curr.to_dot_str("color=\"blue\"")
+        dot += curr.dot_str("color=\"blue\"")
         for child in curr.children:
-            dot += child.to_dot_str()
+            dot += child.dot_str()
             dot += str(curr.id) + " -> " + str(child.id) + "\n"
         curr = curr.parent
 
     return dot
+
+def gedcom_from_bottom(person: Person) -> str:
+    curr: Person = person
+    gedcom = "0 HEAD\n1 GEDC\n2 VERS 5.5.5\n2 FORM LINEAGE-LINKED\n3 VERS 5.5.5\n1 CHAR UTF-8"
+    while curr is not None:
+        gedcom += curr.gedcom_str()
+        for child in curr.children:
+            gedcom += child.gedcom_str()
+        curr = curr.parent
+
+    return gedcom
 
 
 def save_dot(root: Person):
@@ -167,11 +204,17 @@ def clean_book_file():
     with open('res/wallicks_cleaned.txt', "w", encoding="utf8") as file:
         file.write(lines)
     
+def save_trimmed_gedcom(root: Person):
+    me = find_by_name(root, "Kerby").children[0]
+    gedcom = gedcom_from_bottom(me)
+    with open('res/wallicks_trimmed.ged', 'w') as file:
+        file.write(gedcom)
 
 clean_book_file()
 root = parse_book_file()
 save_dot(root)
 save_trimmed_dot(root)
+save_trimmed_gedcom(root)
 
 # def gedcom():
 #     with open('res/wallicks.ged', 'w') as file:
