@@ -156,6 +156,13 @@ def gedcom_from_bottom(person: Person) -> str:
 
     return gedcom
 
+def gedcom_from_top(person: Person) -> str:
+    gedcom = person.gedcom_str()
+    for child in person.children:
+        gedcom += gedcom_from_top(child)
+
+    return gedcom
+
 
 def save_dot(root: Person):
     dot = "digraph G {\n" + dot_from_top(root) + "}"
@@ -210,11 +217,18 @@ def save_trimmed_gedcom(root: Person):
     with open('res/wallicks_trimmed.ged', 'w') as file:
         file.write(gedcom)
 
+def save_gedcom(root: Person):
+    gedcom = "0 HEAD\n1 GEDC\n2 VERS 5.5.5\n2 FORM LINEAGE-LINKED\n3 VERS 5.5.5\n1 CHAR UTF-8"
+    gedcom += gedcom_from_top(root)
+    with open('res/wallicks.ged', 'w') as file:
+        file.write(gedcom)
+
 clean_book_file()
 root = parse_book_file()
 save_dot(root)
 save_trimmed_dot(root)
 save_trimmed_gedcom(root)
+save_gedcom(root)
 
 # def gedcom():
 #     with open('res/wallicks.ged', 'w') as file:
